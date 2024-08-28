@@ -1,0 +1,67 @@
+buildscript {
+    repositories {
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath "com.bmuschko:gradle-docker-plugin:8.0.0"
+        classpath "org.unbroken-dome.gradle-plugins.helm:helm-plugin:1.7.0"
+        classpath "org.unbroken-dome.gradle-plugins.helm:helm-releases-plugin:1.7.0"
+        classpath "org.unbroken-dome.gradle-plugins.helm:helm-publish-plugin:1.7.0"
+    }
+}
+
+apply plugin: org.unbrokendome.gradle.plugins.helm.HelmPlugin
+apply plugin: org.unbrokendome.gradle.plugins.helm.release.HelmReleasesPlugin
+apply plugin: org.unbrokendome.gradle.plugins.helm.publishing.HelmPublishPlugin
+
+ext {
+    //TODO define the naming conventions for staging charts
+    repoPrefix = "armdocker.rnd.ericsson.se/proj-eric-oss-drop/oss-testware"
+    imageVersion = getReleaseVersion()
+    defaultDockerTag = "${repoPrefix}/${project.name}:${imageVersion}".toString()
+}
+
+helm {
+    lint {
+        enabled = false
+    }
+    filtering {
+        filePatterns = ["values.yaml", "Chart.yaml"]
+        values = [
+                name: rootProject.name,
+                defaultDockerTag: defaultDockerTag,
+                version: getReleaseVersion()
+        ]
+    }
+    publishing {
+        repositories {
+            artifactory('proj-eric-oss-drop-helm-local') {
+                url = uri("https://arm.seli.gic.ericsson.se/artifactory/proj-eric-oss-drop-helm-local/oss-testware/${project.name}")
+                credentials {
+                    username = "${System.env.SELI_ARTIFACTORY_REPO_USER}"
+                    password = "${System.env.SELI_ARTIFACTORY_REPO_PASS}"
+                }
+            }
+        }
+    }
+    charts {
+        main {
+            sourceDir = file('deployment/chart/main')
+            chartVersion = imageVersion
+        }
+    }
+    releases {
+        // This is used if you want to deploy (helm install) your chart to your cluster
+        // make sure to run a package target first to generate the chart
+        main {
+            releaseName = "${rootProject.name}"
+            from file("build/helm/charts/${rootProject.name}-${imageVersion}.tgz")
+
+            // Update the values you want for this deployment
+            values = [
+                'env.BUILD_URL': 'http://localhost/your-jenkins-job/1',
+                'env.PRODUCT': 'EIC'
+            ]
+        }
+    }
+}

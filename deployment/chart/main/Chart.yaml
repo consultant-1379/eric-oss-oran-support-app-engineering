@@ -1,0 +1,5 @@
+apiVersion: v2
+name: ${name}
+description: Testware for OS (eric-oss-oran-support-app-engineering)
+type: application
+version: ${version}

@@ -1,0 +1,39 @@
+replicaCount: 1
+
+images:
+  testwareImage: ${defaultDockerTag}
+
+build:
+  version: ${version}
+  name: ${name}
+
+env:
+  APP_VERSION: ""
+  BUILD_URL: ""
+  A1_URL: "http://eric-oss-a1-policy-mgmt-svc:9080/"
+  STAGING_TYPE: "APPLICATION"
+  PRODUCT: ""
+  PRODUCT_VERSION: ""
+  ENVIRONMENT: "production"
+  GAS_HOSTNAME: ""
+  IAM_HOSTNAME: ""
+  EIC_HOSTNAME: ""
+  SEF_STATUS: false
+  OPTIONS_FILE: "default.options.json"
+  A1_VERSION: OSC_2.1.0
+  ALLOW_HTTP: true
+
+a1-simulator:
+  enabled: true
+  logging:
+    format:
+      json: true
+  config:
+    a1SimulatorConfig: 8085:a1-simulator:8085,8185
+
+service:
+  name: a1-simulator
+  selector:
+    run: a1-simulator
+  port: 8085
+  targetPort: 8085

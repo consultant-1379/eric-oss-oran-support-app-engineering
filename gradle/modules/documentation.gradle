@@ -1,0 +1,35 @@
+
+/* ---------------------------------------------------------------------------------------------------
+ * Tasks for Documentation generation.
+ * We use MkDocs to generate HTML documentation from Markdown located in src/documentation
+ *
+ * To avoid the need to pre install all required dependencies we use a docker image to run the tool.
+ * ---------------------------------------------------------------------------------------------------
+ */
+task copyDocsResources(type: Copy) {
+    group = "documentation"
+    description = "copy documentation source resources to target folder"
+    from 'src/documentation'
+    into "${buildDir}/docs_filtered"
+}
+
+task filterDocsResources(dependsOn: copyDocsResources, type: Copy) {
+    group = "documentation"
+    description = "Filter variables"
+    from 'src/documentation'
+    into "${buildDir}/docs_filtered"
+    exclude 'Dockerfile', '**/package.md', '**/run.md', '**/deploy.md', '**/update.md'
+    include '**/*.md', '**/*.html'
+    expand([
+            version: getReleaseVersion(),
+            date: new Date()
+    ])
+}
+
+task packageDocs(type: Zip) {
+    from "${buildDir}/generated_docs"
+    include '*'
+    include '*/*'
+    archiveName "${rootProject.name}-docs.war"
+    destinationDir(buildDir)
+}

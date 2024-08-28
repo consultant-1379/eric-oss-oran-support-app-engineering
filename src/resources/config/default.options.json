@@ -1,0 +1,36 @@
+{
+  "summaryTrendStats": ["avg", "min", "med", "max", "p(95)", "p(99)", "p(90)", "count"],
+  "setupTimeout": "10m",
+  "teardownTimeout": "2m",
+  "thresholds": {
+    "http_req_duration": ["p(95)<1300", "max<2600"]
+  },
+  "scenarios": {
+    "scrape_pools_and_tracing": {
+      "executor": "per-vu-iterations",
+      "vus": 1,
+      "iterations": 1,
+      "exec": "testScrapePoolsAndTracing"
+    },
+    "functional_tests": {
+        "executor": "per-vu-iterations",
+        "startTime": "10s",
+        "vus": 1,
+        "iterations": 1
+    },
+    "stress_tests": {
+        "executor": "shared-iterations",
+        "startTime": "140s",
+        "vus": 10,
+        "iterations": 10,
+        "exec": "bulkActions"
+    },
+    "readonly_tests": {
+      "executor": "per-vu-iterations",
+      "startTime": "170s",
+      "vus": 1,
+      "iterations": 1,
+      "exec": "readonlyTests"
+    }
+  }
+}

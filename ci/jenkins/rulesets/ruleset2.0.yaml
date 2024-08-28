@@ -1,0 +1,33 @@
+modelVersion: 2.0
+description: "Groot: oas k6 testsuite Pipeline"
+docker-images:
+  - bob-py3-kube-helm-builder: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-py3kubehelmbuilder:latest
+properties:
+  - testsuite-dir: .
+  - testsuite-image-name: k6-oas-testsuite
+  - kube-config-path: ./admin.conf
+
+env:
+  - PWD
+  - HOME
+  - KUBECONFIG
+  - NAMESPACE
+var:
+  - helm-chart-directory
+
+rules:
+  test-rule:
+    - task: test-rule
+      cmd: docker image ls
+
+  deploy-testsuite:
+    - task: deploy-testsuite
+      cmd: ${env.PWD}/ci/jenkins/scripts/deploy_testsuite.sh ${kube-config-path} ${env.NAMESPACE} ${env.PWD}
+  copy-testsuite-report:
+    - task: copy-testsuite-report
+      cmd: ${env.PWD}/ci/jenkins/scripts/copy_report_k6.sh ${kube-config-path} ${env.NAMESPACE} ${env.PWD}
+
+  build-testsuite-image:
+    - task: docker-build
+      cmd: docker build ${env.PWD}/${testsuite-dir}
+        --tag ${testsuite-image-name}:latest

@@ -1,0 +1,147 @@
+buildscript {
+    repositories {
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath "com.bmuschko:gradle-docker-plugin:8.0.0"
+    }
+}
+apply plugin: com.bmuschko.gradle.docker.DockerRemoteApiPlugin
+
+ext {
+    repoPrefix = "armdocker.rnd.ericsson.se/proj-eric-oss-drop/oss-testware"
+    imageVersion = getReleaseVersion()
+    hostname = getHostname()
+    defaultDockerTag = "${repoPrefix}/${project.name}:${imageVersion}".toString()
+    latestDockerTag = "${repoPrefix}/${project.name}:latest".toString()
+}
+
+import com.bmuschko.gradle.docker.tasks.container.*
+import com.bmuschko.gradle.docker.tasks.image.*
+
+import java.time.LocalDateTime
+
+/* --------------------------
+ * Documentation Tasks
+ * --------------------------
+ */
+task buildDocsImage(type: DockerBuildImage, dependsOn: filterDocsResources) {
+    group = "documentation"
+    description = "builds a docker image with all dependencies required for the docs generation tool"
+    inputDir = file("build/docs_filtered")
+    images.add("${rootProject.name}-docs:latest")
+}
+
+task createDocsContainer(type: DockerCreateContainer, dependsOn: buildDocsImage) {
+    group = "documentation"
+    description = "creates a container to run the docs generation tool"
+    targetImageId buildDocsImage.getImageId()
+}
+
+task runDocsContainer(type: DockerStartContainer, dependsOn: createDocsContainer) {
+    group = "documentation"
+    description = "run the docs generation tool container"
+    containerId = createDocsContainer.getContainerId()
+    doLast {
+        // Wait 2 seconds for the documentation generation to complete
+        sleep(2 * 1000)
+    }
+}
+
+task buildDocumentation(type: DockerCopyFileFromContainer, dependsOn: runDocsContainer) {
+    group = "documentation"
+    description = "copies the docuemntation generated from teh container to the local /build/generated_docs folder"
+    containerId = runDocsContainer.getContainerId()
+    remotePath = "/site/docs"
+    hostPath = 'build/generated_docs'
+    compressed = false
+
+    finalizedBy "removeDocsContainer"
+}
+
+task removeDocsContainer(type: DockerRemoveContainer) {
+    group = "documentation"
+    description = "remove the docs generation tool container"
+    containerId = runDocsContainer.getContainerId()
+}
+
+/* ------------------
+ * Package tasks
+ * ------------------
+ */
+task copyTestwareSource(type: Copy) {
+    group = "package"
+    description = "copy testware source resources to target folder"
+    from 'src'
+    include 'js/**', 'modules/**', 'resources/**'
+    into "${buildDir}/docker/input"
+}
+
+task copyDockerfile(type: Copy, dependsOn: copyTestwareSource) {
+    group = "package"
+    description = "copy Dockerfile to target folder"
+    from 'deployment/docker'
+    include 'Dockerfile'
+    into "${buildDir}/docker/input"
+}
+
+
+task buildDockerImage(type: DockerBuildImage, dependsOn: copyDockerfile) {
+    group = "package"
+    description = "builds a docker image with the testware contents"
+    inputDir = file("build/docker/input")
+    buildArgs = ["version": imageVersion,
+                "hostname": hostname]
+    labels = [
+        "org.opencontainers.image.title": rootProject.name,
+        "org.opencontainers.image.created": LocalDateTime.now() as String,
+        "org.opencontainers.image.revision": getCommitHash(),
+        "org.opencontainers.image.vendor": "Ericsson",
+        "org.opencontainers.image.version": imageVersion
+    ]
+    images = [defaultDockerTag, latestDockerTag]
+}
+
+task pushImages(type: DockerPushImage, dependsOn: buildDockerImage ) {
+    group = "publish"
+    description = "pushes the docker images to the repository"
+
+    images = [defaultDockerTag, latestDockerTag]
+}
+
+/* -----------
+ * Run tasks
+ * -------------
+ */
+task createQuickRunContainer(type: DockerCreateContainer, dependsOn: buildDockerImage) {
+    group = "run"
+    description = "creates a container to run the K6 tests"
+
+    containerName = "${rootProject.name}-run"
+    imageId = defaultDockerTag
+    hostConfig.autoRemove = true
+}
+
+task startQuickRunContainer(type: DockerStartContainer, dependsOn: createQuickRunContainer) {
+    group = "run"
+    description = "runs your tests using the K6 base image"
+
+    containerId = createQuickRunContainer.getContainerId()
+}
+
+task logQuickRunContainer(type: DockerLogsContainer, dependsOn: startQuickRunContainer) {
+    group = "run"
+    description = "runs your tests using the K6 base image"
+
+    targetContainerId createQuickRunContainer.getContainerId()
+    follow = true
+    tailAll = true
+    onNext { message ->
+        // Each log message from the container will be passed as it's made available
+        logger.quiet message.toString()
+    }
+}
+
+def getCommitHash() {
+    "git rev-parse --short HEAD".execute().text
+}

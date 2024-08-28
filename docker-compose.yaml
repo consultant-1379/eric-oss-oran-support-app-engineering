@@ -1,0 +1,9 @@
+version: '3.4'
+services:
+  k6:
+    image: k6-base-image:latest
+    command: run /home/k6/Main.js
+    environment:
+      - K6_OUT=json=test-output.json
+    volumes:
+      - ./src/main/k6:/home/k6

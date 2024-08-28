@@ -1,0 +1,179 @@
+#
+# COPYRIGHT Ericsson 2022
+#
+#
+#
+# The copyright to the computer program(s) herein is the property of
+#
+# Ericsson Inc. The programs may be used and/or copied only with written
+#
+# permission from Ericsson Inc. or in accordance with the terms and
+#
+# conditions stipulated in the agreement/contract under which the
+#
+# program(s) have been supplied.
+#
+modelVersion: 2.0
+description: "Build Setup for eric-oss-oran-support-app-engineering"
+docker-images:
+  - adp-release-auto: armdocker.rnd.ericsson.se/proj-adp-cicd-drop/bob-adp-release-auto:latest
+  - curl: curlimages/curl:7.79.1
+  - java: armdockerhub.rnd.ericsson.se/openjdk:11
+env:
+  - HOME
+  - DOCKER_NETWORK (default=--network host)
+  - MAVEN_CLI_OPTS (default=-Duser.home=${env.HOME} -B)
+  - MAVEN_OPTS (default=-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn)
+  - SELI_ARTIFACTORY_REPO_USER
+  - SELI_ARTIFACTORY_REPO_PASS
+  - PWD
+  - MVN_HOME (default=/proj/mvn)
+  - DOCKER_VOLUME_MAPPING_PASSWD (default=--volume ${env.HOME}/mypasswd:/etc/passwd:ro)
+  - SITE_URL (default=https://arm1s11-eiffel004.eiffel.gic.ericsson.se:8443/nexus/content/sites/oss-sites)
+  - NEXUS_USER
+  - NEXUS_PASS
+properties:
+  - docker-image-name:  eric-oss-oran-support-app-engineering
+  - image-registry: armdocker.rnd.ericsson.se
+  - image-repo-path: proj-eric-oss-drop
+  - image-title: "eric-oss-oran-support-app-engineering"
+  # product or application
+  - staging: application
+  - product-number: CXU 000 0000
+  - helm-repository: 'https://arm.seli.gic.ericsson.se/artifactory/proj-eric-oss-drop-helm-local/oss-testware'
+  - gerrit-project: OSS/com.ericsson.oss.appEngineering/eric-oss-oran-support-app-engineering
+var:
+  - rstate
+  - branch
+  - semver
+  - version
+  - commithash
+  - image-repo-path
+  - image-full-name
+  - docker-image-size
+
+rules:
+  # Local pipeline rules
+  local-pipeline:
+    - rule: clean
+    - rule: build
+
+  # Clean Tasks
+  clean:
+    - task: rm
+      cmd:
+        - rm -rf .bob/
+        - rm -rf build/
+        - rm -f artifact.properties
+        - rm -rf VERSION_PREFIX
+    - task: gradle-clean
+      docker-image: java
+      docker-flags: &java-docker-flags
+        - ${env.DOCKER_NETWORK}
+        - "--env HOME=${env.HOME}"
+        - "--env GRADLE_USER_HOME=./.gradle"
+        - "--volume ${env.MVN_HOME}:/proj/mvn"
+        - "--volume ${env.HOME}:${env.HOME}"
+        - "--volume /etc/ssh:/etc/ssh"
+        - "--env SELI_ARTIFACTORY_REPO_USER"
+        - "--env SELI_ARTIFACTORY_REPO_PASS"
+        - "--env NEXUS_USER"
+        - "--env NEXUS_PASS"
+        - ${env.DOCKER_VOLUME_MAPPING_PASSWD}
+      cmd: ./gradlew -Duser.home=${env.HOME} clean
+
+  generate-version:
+    # Extracts the version from the POM file and creates the VERSION_PREFIX file used by ADP
+    - task: generate-version-file
+      docker-image: java
+      docker-flags: *java-docker-flags
+      cmd: ./gradlew -Duser.home=${env.HOME} createVersionFile
+
+  init:
+    - rule: generate-version
+    - task: version
+      cmd: cat VERSION_PREFIX > .bob/var.version
+    - task: rstate
+      docker-image: adp-release-auto
+      cmd: get_rstate.py ${var.version} > .bob/var.rstate
+    - task: commit
+      docker-image: adp-release-auto
+      cmd: git rev-parse --short HEAD > .bob/var.commithash
+    - task: image-repo-path
+      cmd: echo "${image-repo-path}" > .bob/var.image-repo-path
+    - task: image-full-name
+      cmd: echo "${image-registry}/${image-repo-path}/${docker-image-name}" > .bob/var.image-full-name
+    - task: adp-artifacts-properties
+      docker-image: adp-release-auto
+      cmd: generate-adp-artifacts
+        --chart-name ""
+        --chart-version ""
+        --chart-repo ""
+        --image-name ${docker-image-name}
+        --image-version ${var.version}
+        --image-repo "${image-registry}/${var.image-repo-path}"
+        --image-only true
+    - task: write-git-details
+      cmd:
+        - echo "GIT_TAG=$(git log -1 --pretty=format:'%h')" >> artifact.properties
+        - echo "GIT_COMMIT_AUTHOR=$(git log -1 --pretty=format:'%an')" >> artifact.properties
+        - echo "GIT_COMMIT_AUTHOR_EMAIL=$(git log -1 --format='%aE')" >> artifact.properties
+        - echo "GIT_COMMIT_SUMMARY=$(git log -1 --pretty=format:'%s')" >> artifact.properties
+    - task: get-branch
+      docker-image: adp-release-auto
+      cmd: git rev-parse --abbrev-ref HEAD > .bob/var.branch
+    - task: set-push-url
+      cmd: git remote set-url --push origin ssh://gerrit-gamma.gic.ericsson.se:29418/${gerrit-project}
+
+  build:
+    - task: gradle-build
+      docker-image: java
+      docker-flags: *java-docker-flags
+      docker-in-docker: socket
+      cmd: ./gradlew -Duser.home=${env.HOME} build package
+
+  gradle-release:
+    - task: perform
+      docker-image: java
+      docker-in-docker: socket
+      docker-flags: *java-docker-flags
+      cmd: ./gradlew release -Duser.home=${env.HOME} -Prelease.useAutomaticVersion=true
+
+  # Publish the documentation
+#  site-publish:
+#    - task: publish-versioned-site
+#      docker-image: curl
+#      docker-flags: *java-docker-flags
+#      cmd: "curl -I -T build/generated_docs -u \"Jorge:Jorge@321\" ${env.SITE_URL}/${staging}-engineering/${docker-image-name}/${var.version}"
+#    - task: publish-latest-site
+#      docker-image: curl
+#      docker-flags: *java-docker-flags
+#      cmd: "curl -I -T build/generated_docs -u \"${env.NEXUS_USER}:${env.NEXUS_PASS}\" ${env.SITE_URL}/${staging}-engineering/${docker-image-name}/latest"
+
+  # Publishes the docker images
+  publish:
+    - task: docker-login
+      cmd: docker login ${image-registry}
+    - task: docker-push
+      docker-image: java
+      docker-flags: *java-docker-flags
+      docker-in-docker: socket
+      cmd: ./gradlew -Duser.home=${env.HOME} pushImages
+    - task: gradle-helm-publish
+      docker-image: java
+      docker-flags: *java-docker-flags
+      docker-in-docker: socket
+      cmd: ./gradlew -Duser.home=${env.HOME} helmPublish
+
+  # Clean up Tasks
+  # Docker image cleanup
+  delete-images:
+    - task: delete-test-image
+      cmd: docker image remove ${var.image-full-name}:${var.version} || true
+
+  # Builder image cleanup
+  delete-builder-images:
+    - task: clean-images
+      cmd:
+        - docker image rm -f ${adp-release-auto} || true
+        - docker image rm -f ${hadolint-scan} || true

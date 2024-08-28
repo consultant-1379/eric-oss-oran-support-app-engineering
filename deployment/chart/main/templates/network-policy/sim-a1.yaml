@@ -1,0 +1,15 @@
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  name: sim-a1
+spec:
+  podSelector:
+    matchLabels:
+      run: a1-simulator
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: eric-oss-a1-policy-mgmt-svc
+  policyTypes:
+    - Ingress

@@ -1,0 +1,56 @@
+site_name: K6 Quick Start Sample
+copyright: Copyright &copy; 2021 Ericsson AB - All Rights Reserved
+
+use_directory_urls: false
+site_dir: /site/docs
+
+theme:
+  name: material
+  logo: img/ericsson_econ.svg
+  favicon: img/favicon.ico
+  font: false
+  custom_dir: overrides
+  features:
+    - navigation.instant
+    - navigation.sections
+
+extra_css:
+  - css/extra.css
+
+extra_javascript:
+  - javascript/extra.js
+
+markdown_extensions:
+  - attr_list
+  - md_in_html
+
+extra:
+  generator: false
+
+plugins:
+  - search
+  - glightbox
+  - build_plantuml:
+      render: "local"
+      bin_path: "/usr/bin/plantuml"
+      output_format: "svg"
+      diagram_root: "docs/diagrams"
+      output_folder: "gen"
+      input_folder: "src"
+      input_extensions: "puml"
+
+nav:
+  - Home: 'index.md'
+  - 'Build':
+      - 'Introduction': 'gradle/index.md'
+      - 'Documentation': 'gradle/documentation.md'
+      - 'Run': 'gradle/run.md'
+      - 'Package': 'gradle/package.md'
+      - 'Deploy': 'gradle/deploy.md'
+  - 'Guides':
+      - 'Update your existing repository': 'guides/update.md'
+      - 'Working with environments': 'guides/environments.md'
+      - 'Database': 'guides/database.md'
+      - 'K6 Report Tool': 'guides/k6_report_tool.md'
+
+
